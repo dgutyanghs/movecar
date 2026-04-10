@@ -52,6 +52,9 @@ async function handleRequest(event) {
   if (path === '/api/order-notify' && request.method === 'POST') {
     return handleOrderNotify(event, request);
   }
+  if (path === '/api/resend-notify' && request.method === 'POST') {
+    return handleResendNotify(event, request);
+  }
   if (path === '/api/customer-location' && request.method === 'POST') {
     return handleCustomerLocation(request);
   }
@@ -101,6 +104,37 @@ async function handleOrderNotify(event, request) {
     const barkUrl = BARK_URL || 'https://api.day.app/eFGndj54yypJJ6U6mGx32G';
     event.waitUntil(fetch(`${barkUrl}/${orderNumber}/New%20order:%20${encodeURIComponent(orderSummary)}`));
     return response;
+  } catch (error) {
+    return new Response(JSON.stringify({ success: false, error: error.message }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+}
+
+async function handleResendNotify(event, request) {
+  try {
+    const body = await request.json();
+    const { orderNumber } = body;
+    if (!orderNumber) {
+      return new Response(JSON.stringify({ success: false, error: 'Missing orderNumber' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    const orderDataStr = await MOVE_CAR_STATUS.get(`order_${orderNumber}_data`);
+    if (!orderDataStr) {
+      return new Response(JSON.stringify({ success: false, error: 'Order not found' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    const orderData = JSON.parse(orderDataStr);
+    const barkUrl = BARK_URL || 'https://api.day.app/eFGndj54yypJJ6U6mGx32G';
+    event.waitUntil(fetch(`${barkUrl}/${orderNumber}/Reminder:%20${encodeURIComponent(orderData.orderSummary)}`));
+    return new Response(JSON.stringify({ success: true }), {
+      headers: { 'Content-Type': 'application/json' }
+    });
   } catch (error) {
     return new Response(JSON.stringify({ success: false, error: error.message }), {
       status: 500,
@@ -295,6 +329,9 @@ function renderCustomerPage(query) {
     <button id="shareLocationBtn" class="card btn-main" onclick="shareCustomerLocation()">
       <span>📍</span><span>Share My Location</span>
     </button>
+    <button id="resendNotifyBtn" class="card btn-main" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);" onclick="resendNotify()">
+      <span>🔔</span><span>Remind Donnie</span>
+    </button>
     <div id="donnieLocationCard" class="card delivery-card" style="display: none;">
       <h3>🎉 Donnie is on the way!</h3>
       <p>Track Donnie's location in real-time:</p>
@@ -355,6 +392,23 @@ function renderCustomerPage(query) {
         (err) => { showToast('Failed to get location'); btn.disabled = false; btn.innerHTML = '<span>📍</span><span>Share My Location</span>'; },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
+    }
+    async function resendNotify() {
+      const btn = document.getElementById('resendNotifyBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span>⏳</span><span>Sending...</span>';
+      try {
+        const res = await fetch('/api/resend-notify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ orderNumber }) });
+        const data = await res.json();
+        if (data.success) {
+          showToast('Reminder sent to Donnie!');
+          btn.innerHTML = '<span>✓</span><span>Reminder Sent</span>';
+        } else {
+          showToast('Failed to send reminder');
+          btn.disabled = false;
+          btn.innerHTML = '<span>🔔</span><span>Remind Donnie</span>';
+        }
+      } catch(e) { showToast('Failed to send reminder'); btn.disabled = false; btn.innerHTML = '<span>🔔</span><span>Remind Donnie</span>'; }
     }
     function showToast(text) { const t = document.getElementById('toast'); t.innerText = text; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 3000); }
     setInterval(async () => {
