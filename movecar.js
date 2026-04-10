@@ -3,6 +3,7 @@ addEventListener('fetch', event => {
 })
 
 const CONFIG = { KV_TTL: 7200 }
+const CORS_HEADERS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' };
 
 function wgs84ToGcj02(lat, lng) {
   const a = 6378245.0;
@@ -49,20 +50,11 @@ async function handleRequest(event) {
   const path = url.pathname
   const query = url.searchParams
 
-  if (path === '/api/order-notify' && request.method === 'POST') {
-    return handleOrderNotify(event, request);
+  if (request.method === 'OPTIONS') {
+    return new Response(null, { status: 200, headers: CORS_HEADERS });
   }
-  if (path === '/api/resend-notify' && request.method === 'POST') {
-    return handleResendNotify(event, request);
-  }
-  if (path === '/api/customer-location' && request.method === 'POST') {
-    return handleCustomerLocation(request);
-  }
-  if (path === '/api/owner-confirm' && request.method === 'POST') {
-    return handleOwnerConfirm(request);
-  }
-  if (path === '/api/order-update' && request.method === 'POST') {
-    return handleOrderUpdate(request);
+  if (path.startsWith('/api/') && request.method === 'POST') {
+    return handleApiPost(event, path, request);
   }
   if (path === '/api/check-status') {
     return handleCheckStatus(query);
@@ -79,6 +71,17 @@ async function handleRequest(event) {
   return new Response('Not Found', { status: 404 });
 }
 
+async function handleApiPost(event, path, request) {
+  switch (path) {
+    case '/api/order-notify': return handleOrderNotify(event, request);
+    case '/api/resend-notify': return handleResendNotify(event, request);
+    case '/api/customer-location': return handleCustomerLocation(request);
+    case '/api/owner-confirm': return handleOwnerConfirm(request);
+    case '/api/order-update': return handleOrderUpdate(request);
+    default: return new Response(JSON.stringify({ error: 'Not Found' }), { status: 404, headers: { 'Content-Type': 'application/json', ...CORS_HEADERS } });
+  }
+}
+
 async function handleOrderNotify(event, request) {
   try {
     const body = await request.json();
@@ -86,7 +89,7 @@ async function handleOrderNotify(event, request) {
     if (!orderNumber || !orderSummary) {
       return new Response(JSON.stringify({ success: false, error: 'Missing required fields' }), {
         status: 400,
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json', ...CORS_HEADERS }
       });
     }
     const orderData = JSON.stringify({
@@ -99,15 +102,16 @@ async function handleOrderNotify(event, request) {
     await MOVE_CAR_STATUS.put(`order_${orderNumber}_data`, orderData, { expirationTtl: 86400 });
     await MOVE_CAR_STATUS.put(`order_${orderNumber}_status`, 'waiting');
     const response = new Response(JSON.stringify({ success: true }), {
-      headers: { 'Content-Type': 'application/json' }
+      headers: { 'Content-Type': 'application/json', ...CORS_HEADERS }
     });
     const barkUrl = BARK_URL || 'https://api.day.app/eFGndj54yypJJ6U6mGx32G';
-    event.waitUntil(fetch(`${barkUrl}/${orderNumber}/New%20order:%20${encodeURIComponent(orderSummary)}`));
+    const confirmUrl = `https://orders.ciqikou.cc/donnie?order=${orderNumber}`;
+    event.waitUntil(fetch(`${barkUrl}/${orderNumber}/New%20order:%20${encodeURIComponent(orderSummary)}?url=${encodeURIComponent(confirmUrl)}`));
     return response;
   } catch (error) {
     return new Response(JSON.stringify({ success: false, error: error.message }), {
       status: 500,
-      headers: { 'Content-Type': 'application/json' }
+      headers: { 'Content-Type': 'application/json', ...CORS_HEADERS }
     });
   }
 }
@@ -119,26 +123,28 @@ async function handleResendNotify(event, request) {
     if (!orderNumber) {
       return new Response(JSON.stringify({ success: false, error: 'Missing orderNumber' }), {
         status: 400,
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json', ...CORS_HEADERS }
       });
     }
     const orderDataStr = await MOVE_CAR_STATUS.get(`order_${orderNumber}_data`);
     if (!orderDataStr) {
       return new Response(JSON.stringify({ success: false, error: 'Order not found' }), {
         status: 404,
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json', ...CORS_HEADERS }
       });
     }
     const orderData = JSON.parse(orderDataStr);
     const barkUrl = BARK_URL || 'https://api.day.app/eFGndj54yypJJ6U6mGx32G';
-    event.waitUntil(fetch(`${barkUrl}/${orderNumber}/Reminder:%20${encodeURIComponent(orderData.orderSummary)}`));
+
+    const confirmUrl = `https://orders.ciqikou.cc/donnie?order=${orderNumber}`;
+    event.waitUntil(fetch(`${barkUrl}/${orderNumber}/Reminder:%20${encodeURIComponent(orderData.orderSummary)}?url=${encodeURIComponent(confirmUrl)}`));
     return new Response(JSON.stringify({ success: true }), {
-      headers: { 'Content-Type': 'application/json' }
+      headers: { 'Content-Type': 'application/json', ...CORS_HEADERS }
     });
   } catch (error) {
     return new Response(JSON.stringify({ success: false, error: error.message }), {
       status: 500,
-      headers: { 'Content-Type': 'application/json' }
+      headers: { 'Content-Type': 'application/json', ...CORS_HEADERS }
     });
   }
 }
@@ -150,19 +156,19 @@ async function handleCustomerLocation(request) {
     if (!orderNumber || !lat || !lng) {
       return new Response(JSON.stringify({ success: false, error: 'Missing required fields' }), {
         status: 400,
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json', ...CORS_HEADERS }
       });
     }
     const urls = generateMapUrls(lat, lng);
     const locationData = JSON.stringify({ lat, lng, ...urls, timestamp: Date.now() });
     await MOVE_CAR_STATUS.put(`order_${orderNumber}_customer_location`, locationData, { expirationTtl: CONFIG.KV_TTL });
     return new Response(JSON.stringify({ success: true }), {
-      headers: { 'Content-Type': 'application/json' }
+      headers: { 'Content-Type': 'application/json', ...CORS_HEADERS }
     });
   } catch (error) {
     return new Response(JSON.stringify({ success: false, error: error.message }), {
       status: 500,
-      headers: { 'Content-Type': 'application/json' }
+      headers: { 'Content-Type': 'application/json', ...CORS_HEADERS }
     });
   }
 }
@@ -184,12 +190,12 @@ async function handleOwnerConfirm(request) {
       await MOVE_CAR_STATUS.put(`order_${orderNumber}_donnie_location`, locationData, { expirationTtl: CONFIG.KV_TTL });
     }
     return new Response(JSON.stringify({ success: true }), {
-      headers: { 'Content-Type': 'application/json' }
+      headers: { 'Content-Type': 'application/json', ...CORS_HEADERS }
     });
   } catch (error) {
     return new Response(JSON.stringify({ success: false, error: error.message }), {
       status: 500,
-      headers: { 'Content-Type': 'application/json' }
+      headers: { 'Content-Type': 'application/json', ...CORS_HEADERS }
     });
   }
 }
@@ -201,17 +207,17 @@ async function handleOrderUpdate(request) {
     if (!orderNumber || !status) {
       return new Response(JSON.stringify({ success: false, error: 'Missing required fields' }), {
         status: 400,
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json', ...CORS_HEADERS }
       });
     }
     await MOVE_CAR_STATUS.put(`order_${orderNumber}_status`, status);
     return new Response(JSON.stringify({ success: true }), {
-      headers: { 'Content-Type': 'application/json' }
+      headers: { 'Content-Type': 'application/json', ...CORS_HEADERS }
     });
   } catch (error) {
     return new Response(JSON.stringify({ success: false, error: error.message }), {
       status: 500,
-      headers: { 'Content-Type': 'application/json' }
+      headers: { 'Content-Type': 'application/json', ...CORS_HEADERS }
     });
   }
 }
@@ -221,7 +227,7 @@ async function handleCheckStatus(query) {
   if (!orderNumber) {
     return new Response(JSON.stringify({ error: 'Missing order parameter' }), {
       status: 400,
-      headers: { 'Content-Type': 'application/json' }
+      headers: { 'Content-Type': 'application/json', ...CORS_HEADERS }
     });
   }
   const status = await MOVE_CAR_STATUS.get(`order_${orderNumber}_status`);
@@ -232,7 +238,7 @@ async function handleCheckStatus(query) {
     donnieLocation: donnieLocation ? JSON.parse(donnieLocation) : null,
     customerLocation: customerLocation ? JSON.parse(customerLocation) : null
   }), {
-    headers: { 'Content-Type': 'application/json' }
+    headers: { 'Content-Type': 'application/json', ...CORS_HEADERS }
   });
 }
 
@@ -242,17 +248,17 @@ async function handleGetLocation(query) {
   if (!orderNumber) {
     return new Response(JSON.stringify({ error: 'Missing order parameter' }), {
       status: 400,
-      headers: { 'Content-Type': 'application/json' }
+      headers: { 'Content-Type': 'application/json', ...CORS_HEADERS }
     });
   }
   const key = type === 'customer' ? `order_${orderNumber}_customer_location` : `order_${orderNumber}_donnie_location`;
   const data = await MOVE_CAR_STATUS.get(key);
   if (data) {
-    return new Response(data, { headers: { 'Content-Type': 'application/json' } });
+    return new Response(data, { headers: { 'Content-Type': 'application/json', ...CORS_HEADERS } });
   }
   return new Response(JSON.stringify({ error: 'No location found' }), {
     status: 404,
-    headers: { 'Content-Type': 'application/json' }
+    headers: { 'Content-Type': 'application/json', ...CORS_HEADERS }
   });
 }
 
@@ -348,7 +354,7 @@ function renderCustomerPage(query) {
     let currentStatus = 'waiting';
     async function loadOrderInfo() {
       try {
-        const res = await fetch(\`/api/check-status?order=\${orderNumber}\`);
+        const res = await fetch(\`/api/check-status?order=${orderNumber}\`);
         const data = await res.json();
         currentStatus = data.status;
         updateStatusBadge(data.status);
@@ -413,7 +419,7 @@ function renderCustomerPage(query) {
     function showToast(text) { const t = document.getElementById('toast'); t.innerText = text; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 3000); }
     setInterval(async () => {
       try {
-        const res = await fetch(\`/api/check-status?order=\${orderNumber}\`);
+        const res = await fetch(\`/api/check-status?order=${orderNumber}\`);
         const data = await res.json();
         if (data.status !== currentStatus) { currentStatus = data.status; updateStatusBadge(data.status); }
         if (data.donnieLocation && !donnieLocation) { donnieLocation = data.donnieLocation; showDonnieLocation(); }
@@ -489,7 +495,7 @@ function renderDonniePage() {
       </div>
     </div>
     <button id="onTheWayBtn" class="btn" onclick="startDelivery()">
-      <span>🚴</span><span>I'm on the way</span>
+      <span>🚴</span><span>On my way</span>
     </button>
     <button id="deliveredBtn" class="btn btn-secondary" onclick="markDelivered()">
       <span>✅</span><span>Delivered</span>
@@ -539,7 +545,7 @@ function renderDonniePage() {
         btn.style.background = 'linear-gradient(135deg, #9ca3af 0%, #6b7280 100%)';
         document.getElementById('doneMsg').classList.add('show');
         document.getElementById('doneText').textContent = 'Customer can now see your location!';
-      } catch(e) { btn.disabled = false; btn.innerHTML = '<span>🚴</span><span>I\'m on the way</span>'; showToast('Failed to confirm'); }
+      } catch(e) { btn.disabled = false; btn.innerHTML = '<span>🚴</span><span>On the way</span>'; showToast('Failed to confirm'); }
     }
     async function markDelivered() {
       const orderNumber = document.getElementById('orderNumber').value.trim();
