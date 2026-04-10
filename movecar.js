@@ -62,8 +62,11 @@ async function handleRequest(event) {
   if (path === '/api/get-location') {
     return handleGetLocation(query);
   }
+  if (path === '/api/get-order') {
+    return handleGetOrder(query);
+  }
   if (path === '/donnie') {
-    return renderDonniePage();
+    return renderDonniePage(query);
   }
   if (path === '/' || path === '/index.html') {
     return renderCustomerPage(query);
@@ -262,6 +265,24 @@ async function handleGetLocation(query) {
   });
 }
 
+async function handleGetOrder(query) {
+  const orderNumber = query.get('order');
+  if (!orderNumber) {
+    return new Response(JSON.stringify({ error: 'Missing order parameter' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json', ...CORS_HEADERS }
+    });
+  }
+  const orderData = await MOVE_CAR_STATUS.get(`order_${orderNumber}_data`);
+  if (orderData) {
+    return new Response(orderData, { headers: { 'Content-Type': 'application/json', ...CORS_HEADERS } });
+  }
+  return new Response(JSON.stringify({ error: 'Order not found' }), {
+    status: 404,
+    headers: { 'Content-Type': 'application/json', ...CORS_HEADERS }
+  });
+}
+
 function renderCustomerPage(query) {
   const orderNumber = query.get('order') || '';
   const html = `<!DOCTYPE html>
@@ -432,7 +453,8 @@ function renderCustomerPage(query) {
   return new Response(html, { headers: { 'Content-Type': 'text/html;charset=UTF-8' } });
 }
 
-function renderDonniePage() {
+function renderDonniePage(query) {
+  const orderParam = query.get('order') || '';
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -466,6 +488,11 @@ function renderDonniePage() {
     .done-msg p { color: #065f46; font-weight: 600; font-size: 15px; }
     .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%) translateY(-100px); background: white; padding: 12px 24px; border-radius: 16px; font-size: 14px; font-weight: 600; color: #2d3748; box-shadow: 0 10px 40px rgba(0,0,0,0.15); opacity: 0; transition: all 0.4s; z-index: 100; }
     .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .notes-display { background: #f7fafc; border-radius: 8px; padding: 12px; color: #4a5568; font-size: 14px; min-height: 44px; }
+    .notes-row { display: flex; gap: 8px; align-items: stretch; }
+    .copy-btn { background: #e2e8f0; border: none; border-radius: 8px; padding: 8px 12px; font-size: 12px; cursor: pointer; color: #4a5568; }
+    .copy-btn:active { background: #cbd5e0; }
+    .phone-link { display: block; background: #d1fae5; border-radius: 8px; padding: 12px; color: #065f46; font-size: 16px; font-weight: 600; text-decoration: none; text-align: center; }
   </style>
 </head>
 <body>
@@ -477,12 +504,15 @@ function renderDonniePage() {
     <div class="order-section">
       <p><strong>Order Number:</strong></p>
       <div class="input-group">
-        <input type="text" id="orderNumber" placeholder="Enter order number (e.g., A001)">
+        <input type="text" id="orderNumber" placeholder="Enter order number (e.g., A001)" value="${orderParam}" readonly>
       </div>
       <p><strong>Customer Notes:</strong></p>
-      <div class="input-group">
-        <input type="text" id="customerNotes" placeholder="Notes from customer">
+      <div class="notes-row">
+        <div id="customerNotes" class="notes-display" style="flex:1">Waiting for notes...</div>
+        <button class="copy-btn" onclick="copyNotes()">Copy</button>
       </div>
+      <p><strong>Customer Phone:</strong></p>
+      <a id="customerPhone" href="#" class="phone-link" onclick="callCustomer(); return false;">Waiting for phone...</a>
     </div>
     <div id="customerLocationCard" class="loc-card" style="display: none;">
       <span class="loc-icon">📍</span>
@@ -512,6 +542,11 @@ function renderDonniePage() {
       if (!orderNumber) return;
       currentOrderNumber = orderNumber;
       try {
+        const orderRes = await fetch(\`/api/get-order?order=\${orderNumber}\`);
+        if (orderRes.ok) {
+          const orderData = await orderRes.json();
+          document.getElementById('customerNotes').textContent = orderData.notes || 'No notes';
+        }
         const res = await fetch(\`/api/get-location?order=\${orderNumber}&type=customer\`);
         if (res.ok) {
           const data = await res.json();
@@ -562,8 +597,27 @@ function renderDonniePage() {
       } catch(e) { btn.disabled = false; btn.innerHTML = '<span>✅</span><span>Delivered</span>'; showToast('Failed to update'); }
     }
     function showToast(text) { const t = document.getElementById('toast'); t.innerText = text; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 3000); }
+    function copyNotes() { const notes = document.getElementById('customerNotes').textContent; navigator.clipboard.writeText(notes).then(() => showToast('Notes copied!')); }
+    function callCustomer() { const phone = document.getElementById('customerPhone').dataset.phone; if (phone) window.location.href = 'tel:' + phone; }
     let debounceTimer;
     document.getElementById('orderNumber').addEventListener('input', () => { clearTimeout(debounceTimer); debounceTimer = setTimeout(loadCustomerLocation, 500); });
+    (async function init() {
+      const orderNumber = document.getElementById('orderNumber').value.trim();
+      if (orderNumber) {
+        try {
+          const orderRes = await fetch(\`/api/get-order?order=\${orderNumber}\`);
+          if (orderRes.ok) {
+            const orderData = await orderRes.json();
+            document.getElementById('customerNotes').textContent = orderData.notes || 'No notes';
+            const phone = orderData.phone || '';
+            document.getElementById('customerPhone').textContent = phone || 'No phone';
+            document.getElementById('customerPhone').dataset.phone = phone;
+            document.getElementById('customerPhone').style.display = phone ? 'block' : 'none';
+          }
+        } catch(e) {}
+        loadCustomerLocation();
+      }
+    })();
   </script>
 </body>
 </html>`;
