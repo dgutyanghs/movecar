@@ -1,0 +1,10 @@
+name = "call-ciqikou"
+main = "movecar.js"
+compatibility_date = "2026-03-17"
+
+[[kv_namespaces]]
+binding = "MOVE_CAR_STATUS"
+id = "4ea74be3f3ed42a498c79e4433fa1181"
+
+[vars]
+BARK_URL = "https://api.day.app/eFGndj54yypJJ6U6mGx32G"
