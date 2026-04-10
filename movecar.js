@@ -236,10 +236,12 @@ async function handleCheckStatus(query) {
   const status = await MOVE_CAR_STATUS.get(`order_${orderNumber}_status`);
   const donnieLocation = await MOVE_CAR_STATUS.get(`order_${orderNumber}_donnie_location`);
   const customerLocation = await MOVE_CAR_STATUS.get(`order_${orderNumber}_customer_location`);
+  const orderData = await MOVE_CAR_STATUS.get(`order_${orderNumber}_data`);
   return new Response(JSON.stringify({
     status: status || 'not_found',
     donnieLocation: donnieLocation ? JSON.parse(donnieLocation) : null,
-    customerLocation: customerLocation ? JSON.parse(customerLocation) : null
+    customerLocation: customerLocation ? JSON.parse(customerLocation) : null,
+    orderSummary: orderData ? JSON.parse(orderData).orderSummary : null
   }), {
     headers: { 'Content-Type': 'application/json', ...CORS_HEADERS }
   });
@@ -384,6 +386,7 @@ function renderCustomerPage(query) {
         const data = await res.json();
         currentStatus = data.status;
         updateStatusBadge(data.status);
+        if (data.orderSummary) { document.getElementById('orderSummary').textContent = data.orderSummary; }
         if (data.donnieLocation) { donnieLocation = data.donnieLocation; showDonnieLocation(); }
       } catch(e) { console.error('Error loading status:', e); }
     }
@@ -532,6 +535,8 @@ function renderDonniePage(query) {
       <div class="input-group">
         <input type="text" id="orderNumber" placeholder="Enter order number (e.g., A001)" value="${orderParam}" readonly>
       </div>
+      <p><strong>Order Summary:</strong></p>
+      <div id="orderSummaryDisplay" class="notes-display">Loading...</div>
       <p><strong>Customer Notes:</strong></p>
       <div class="notes-row">
         <div id="customerNotes" class="notes-display" style="flex:1">Waiting for notes...</div>
@@ -571,7 +576,10 @@ function renderDonniePage(query) {
         const orderRes = await fetch(\`/api/get-order?order=\${orderNumber}\`);
         if (orderRes.ok) {
           const orderData = await orderRes.json();
+          document.getElementById('orderSummaryDisplay').textContent = orderData.orderSummary || 'No items';
           document.getElementById('customerNotes').textContent = orderData.notes || 'No notes';
+          document.getElementById('customerPhone').textContent = orderData.phone || 'No phone';
+          document.getElementById('customerPhone').dataset.phone = orderData.phone || '';
         }
         const res = await fetch(\`/api/get-location?order=\${orderNumber}&type=customer\`);
         if (res.ok) {
