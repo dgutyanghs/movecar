@@ -290,7 +290,7 @@ function renderCustomerPage(query) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Order Tracking - ${orderNumber}</title>
+  <title>Ciqikou Supply - Order Tracking</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: linear-gradient(160deg, #0093E9 0%, #80D0C7 100%); min-height: 100vh; padding: 20px; }
@@ -318,6 +318,7 @@ function renderCustomerPage(query) {
     .btn-main { background: linear-gradient(135deg, #0093E9 0%, #80D0C7 100%); color: white; border: none; padding: 18px; border-radius: 16px; font-size: 16px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; box-shadow: 0 10px 30px rgba(0,147,233,0.35); transition: all 0.2s; min-height: 56px; }
     .btn-main:active { transform: scale(0.98); }
     .btn-main:disabled { background: linear-gradient(135deg, #94a3b8 0%, #64748b 100%); box-shadow: none; cursor: not-allowed; }
+    #callDonnieBtn:disabled { background: linear-gradient(135deg, #9ca3af 0%, #6b7280 100%); cursor: not-allowed; }
     .btn-main.shared { background: linear-gradient(135deg, #10b981 0%, #059669 100%); }
     .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%) translateY(-100px); background: white; padding: 12px 24px; border-radius: 16px; font-size: 14px; font-weight: 600; color: #2d3748; box-shadow: 0 10px 40px rgba(0,0,0,0.15); opacity: 0; transition: all 0.4s; z-index: 100; }
     .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
@@ -337,7 +338,8 @@ function renderCustomerPage(query) {
   <div class="container">
     <div class="card header">
       <div class="icon-wrap">📦</div>
-      <h1>Order #${orderNumber}</h1>
+      <h1>Ciqikou Supply Station</h1>
+      <p class="subtitle">Order number:${orderNumber}</p>
       <p class="subtitle">Track Your Delivery</p>
     </div>
     <div class="card status-card">
@@ -360,13 +362,16 @@ function renderCustomerPage(query) {
       <span>🔔</span><span>Remind Donnie</span>
     </button>
     <div id="donnieLocationCard" class="card delivery-card" style="display: none;">
-      <h3>🎉 Donnie is on the way!</h3>
+      <h3>Donnie is on the way!</h3>
       <p>Track Donnie's location in real-time:</p>
       <div class="map-links">
         <a id="donnieAmapLink" href="#" class="map-btn amap" target="_blank">Gaode Maps</a>
         <a id="donnieAppleLink" href="#" class="map-btn apple" target="_blank">Apple Maps</a>
       </div>
     </div>
+    <button id="callDonnieBtn" class="card btn-main" disabled style="background: linear-gradient(135deg, #9ca3af 0%, #6b7280 100%); cursor: not-allowed;">
+      <span>📞</span><span id="callDonnieText">Call Donnie (30s)</span>
+    </button>
   </div>
   <script>
     const orderNumber = '${orderNumber}';
@@ -398,6 +403,26 @@ function renderCustomerPage(query) {
       }
       if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
     }
+    function callDonnie() {
+      const btn = document.getElementById('callDonnieBtn');
+      if (btn.disabled) return;
+      const phone = '${PHONE_NUMBER}';
+      if (phone) window.location.href = 'tel:' + phone;
+    }
+    let callCountdown = 30;
+    const callBtn = document.getElementById('callDonnieBtn');
+    const callTimer = setInterval(() => {
+      callCountdown--;
+      document.getElementById('callDonnieText').textContent = 'Call Donnie (' + callCountdown + 's)';
+      if (callCountdown <= 0) {
+        clearInterval(callTimer);
+        callBtn.disabled = false;
+        callBtn.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+        callBtn.style.cursor = 'pointer';
+        callBtn.setAttribute('onclick', 'callDonnie(); return false;');
+        document.getElementById('callDonnieText').textContent = 'Call Donnie';
+      }
+    }, 1000);
     async function shareCustomerLocation() {
       const btn = document.getElementById('shareLocationBtn');
       const icon = document.getElementById('customerLocIcon');
@@ -460,7 +485,7 @@ function renderDonniePage(query) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Donnie - Order Management</title>
+  <title>Ciqikou Supply - Delivery Management</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: linear-gradient(160deg, #10b981 0%, #059669 100%); min-height: 100vh; padding: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
@@ -499,7 +524,8 @@ function renderDonniePage(query) {
   <div id="toast" class="toast"></div>
   <div class="card">
     <span class="emoji">👋</span>
-    <h1>Order Management</h1>
+    <h1>Ciqikou Supply Station</h1>
+    <p class="subtitle">Delivery Management</p>
     <p class="subtitle">Manage your delivery orders</p>
     <div class="order-section">
       <p><strong>Order Number:</strong></p>
